@@ -1,0 +1,176 @@
+---
+- name: Initial Debian 11 Server Setup
+  hosts: all
+  become: yes
+
+  tasks:
+
+    - name: Set new root password
+      ansible.builtin.user:
+        name: root
+        password: "{{ root_password_hash }}" # Hash the password securely
+
+    - name: Remove apt backport sources
+      ansible.builtin.lineinfile:
+        path: /etc/apt/sources.list.d/backports.list
+        regexp: 'bullseye-backports'
+        state: absent
+
+    - name: Update apt cache and upgrade packages
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+
+    - name: Install common essential packages
+      ansible.builtin.apt:
+        name:
+          - vim-tiny
+          - curl
+          - wget
+          - git
+          - htop
+          - unattended-upgrades
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - software-properties-common
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Ensure unattended-upgrades is configured for automatic security updates
+      ansible.builtin.lineinfile:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        regexp: '^APT::Periodic::Unattended-Upgrade "1";'
+        line: 'APT::Periodic::Unattended-Upgrade "1";'
+        create: yes
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create a new non-root user
+      ansible.builtin.user:
+        name: "{{ app_user }}" # Define this variable in your inventory or command line
+        state: present
+        shell: /bin/bash
+        groups: sudo
+        append: yes
+        password: "{{ app_user_password_hash }}" # Replace with a secure hash
+
+    - name: Put addons to .bashrc
+      ansible.builtin.blockinfile:
+        path: "/home/{{ app_user }}/.bashrc"
+        block: "{{ lookup('ansible.builtin.file', 'bashrc_extra.sh') }}"
+        state: present
+        create: true
+
+    - name: Configure VIM
+      ansible.builtin.blockinfile:
+        path: "/home/{{ app_user }}/.vimrc"
+        block: "{{ lookup('ansible.builtin.file', 'vimrc_extra.txt') }}"
+        marker: '" {mark} - Custom Config Block'
+        state: present
+        create: true
+
+    - name: Ensure user .ssh directory exists and has correct permissions
+      ansible.builtin.file:
+        path: "/home/{{ app_user }}/.ssh"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0700'
+
+    - name: Add SSH public key to user authorized_keys
+      ansible.posix.authorized_key:
+        user: "{{ app_user }}"
+        state: present
+        key: "{{ app_user_public_key }}"
+        manage_dir: false # Set to false if you've already managed the directory permissions
+
+    - name: Ensure SSH service is running and enabled
+      ansible.builtin.service:
+        name: ssh
+        state: started
+        enabled: yes
+
+    - name: Configure SSH to use alternative TCP port
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Port 22'
+        line: 'Port {{ ssh_alternative_port }}'
+        state: present
+      notify: Restart sshd
+
+    - name: Configure SSH to disallow login by password
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+      notify: Restart sshd
+
+    - name: Configure SSH to disallow root login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      notify: Restart sshd
+
+    - name: Configure SSH to allow only specific users (optional)
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^AllowUsers'
+        line: "AllowUsers {{ app_user }}" # Allow only the new user
+        state: present
+      notify: Restart sshd
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+        keyring: /etc/apt/trusted.gpg.d/docker.gpg
+        # keyring: /etc/apt/keyrings/docker.gpg # Recommended for modern Debian versions
+
+    - name: Add Docker APT repository
+      ansible.builtin.apt_repository:
+        # repo: "deb [arch={{ ansible_facts['architecture'] }} signed-by=/etc/apt/trusted.gpg.d/docker.gpg] https://download.docker.com/linux/debian {{ ansible_facts['distribution_release'] }} stable"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/docker.gpg] https://download.docker.com/linux/debian {{ ansible_facts['distribution_release'] }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker CE packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure Docker service is running and enabled
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add new user to docker group (optional, for non-root Docker usage)
+      ansible.builtin.user:
+        name: "{{ app_user }}" # Or specify a different user
+        groups: docker
+        append: yes
+      when: app_user is defined and app_user != 'root'
+
+    - name: Install Docker SDK for Python (for Ansible's docker modules)
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
