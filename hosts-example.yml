@@ -8,7 +8,7 @@ all:
 
   hosts:
     new_host1: &new_host_vars
-      ansible_host: <host_ip>
+      ansible_host: <app_host_alias>
       ansible_port: 22
       ansible_ssh_user: root
 

@@ -13,7 +13,7 @@
 
 3. Add new host config to `$HOME/.ssh/config` this way:
 
-        Host apphost
+        Host <app_host_alias>
             HostName <host_ip>
             Port <ssh_alternative_port>
             User <appuser>
@@ -26,7 +26,7 @@
 
         openssl passwd -6
 
-6. Edit `hosts.yml` to set respective values values like that:
+6. Copy `hosts-example.yml` file to `hosts.yml`. Edit `hosts.yml` file to set respective values values like that:
 
         all:
             vars:
@@ -38,7 +38,7 @@
 
             hosts:
                 new_host1: &new_host_vars
-                    ansible_host: <host_ip>
+                    ansible_host: <app_host_alias>
                     ansible_port: 22
                     ansible_ssh_user: root
 
