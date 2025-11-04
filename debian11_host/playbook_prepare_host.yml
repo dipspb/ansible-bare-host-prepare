@@ -4,11 +4,14 @@
   become: yes
 
   tasks:
+    # --- Change root password
 
     - name: Set new root password
       ansible.builtin.user:
         name: root
         password: "{{ root_password_hash }}" # Hash the password securely
+
+    # --- Prepare system
 
     - name: Remove apt backport sources
       ansible.builtin.lineinfile:
@@ -25,6 +28,7 @@
     - name: Install common essential packages
       ansible.builtin.apt:
         name:
+          - nftables
           - vim-tiny
           - curl
           - wget
@@ -37,6 +41,11 @@
           - software-properties-common
           - python3
           - python3-pip
+          - python3-dev
+          - python3-venv
+          - libaugeas-dev
+          - gcc
+          - nginx
         state: present
 
     - name: Ensure unattended-upgrades is configured for automatic security updates
@@ -48,6 +57,8 @@
         owner: root
         group: root
         mode: '0644'
+
+    # --- Create a new non-root user
 
     - name: Create a new non-root user
       ansible.builtin.user:
@@ -88,6 +99,8 @@
         key: "{{ app_user_public_key }}"
         manage_dir: false # Set to false if you've already managed the directory permissions
 
+    # --- Configure SSH server
+
     - name: Ensure SSH service is running and enabled
       ansible.builtin.service:
         name: ssh
@@ -125,6 +138,40 @@
         line: "AllowUsers {{ app_user }}" # Allow only the new user
         state: present
       notify: Restart sshd
+
+    # --- Configure firewall
+
+    - name: Copy firewall config
+      ansible.builtin.copy:
+        src: nftables.conf
+        dest: /etc/nftables.conf
+        mode: '0644'
+
+    - name: Enable and start firewall service if not started
+      ansible.builtin.service:
+        name: nftables
+        state: started
+        enabled: yes
+
+    # --- Set fq queuing discipline and enable BBR congestion control algorithm
+
+    - name: Set fq queuing discipline
+      ansible.posix.sysctl:
+        name: "net.core.default_qdisc"
+        value: "fq"
+        sysctl_set: true
+        state: present
+        reload: true
+
+    - name: Enable BBR congestion control algorithm
+      ansible.posix.sysctl:
+        name: "net.ipv4.tcp_congestion_control"
+        value: "bbr"
+        sysctl_set: true
+        state: present
+        reload: true
+
+    # --- Install Docker CE and Docker Compose
 
     - name: Add Docker GPG key
       ansible.builtin.apt_key:

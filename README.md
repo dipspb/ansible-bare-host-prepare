@@ -50,7 +50,7 @@ Congratulations! You are in a position to initialise any amount of Debian 11 hos
 ### Prepare brand new hosts
 For brand new just installed hosts run it this way. You will be asked for initial remote root password:
 
-    ansible-playbook debian11_prepare_host.yml --ask-pass
+    ansible-playbook debian11_host/playbook_prepare_host.yml --ask-pass
 
 In case it wil fail with following error message: `"Using a SSH password instead of a key is not possible because Host Key checking is enabled and sshpass does not support this.  Please add this host's fingerprint to your known_hosts file to manage this host."` you wil need to run following command first to set remote ssh host as known:
 
@@ -62,3 +62,6 @@ Then being asked just type `yes` and press `<Enter>`. It is enough and you don't
 For already prepared host you can change playbook file and run it over again this way. You will be asked for remote `<appuser>` password:
 
     ansible-playbook debian11_prepare_host.yml --ask-become-pass -e "ansible_port=<ssh_alternative_port> ansible_ssh_user=<appuser>"
+
+## Add Let's Encrypt Certbot
+To setup and run Certbot renewal task use `certbot/playbook_certbot.yml` running it the same way as above.

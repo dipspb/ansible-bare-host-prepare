@@ -1,0 +1,76 @@
+---
+- name: Initial Debian 11 Server Setup
+  hosts: all
+  become: yes
+
+  vars:
+    certbot_domain: "xy-a.5coders.com"
+    certbot_certificate: "/etc/letsencrypt/live/{{ certbot_domain }}/fullchain.pem"
+    certbot_key: "/etc/letsencrypt/live/{{ certbot_domain }}/privkey.pem"
+
+  tasks:
+    # --- Install Certbot and configure auto renewal
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-dev
+          - python3-venv
+          - libaugeas-dev
+          - gcc
+          - nginx
+        state: present
+
+    - name: Install Certbot
+      ansible.builtin.shell:
+        cmd: |
+          if [ ! -f /usr/local/bin/certbot ]; then
+            python3 -m venv /opt/certbot/
+            /opt/certbot/bin/pip install --upgrade pip
+            /opt/certbot/bin/pip install certbot
+            ln -s /opt/certbot/bin/certbot /usr/local/bin/certbot
+          fi
+
+    - name: Copy Certbot renewal script
+      ansible.builtin.copy:
+        src: certbot_renew_cert.sh
+        dest: /usr/local/bin/
+        mode: '0774'
+
+    - name: Copy Certbot pre-renewal hook script
+      ansible.builtin.copy:
+        src: ntf_enable_http.sh
+        dest: /etc/letsencrypt/renewal-hooks/pre/
+        mode: '0774'
+
+    - name: Copy Certbot post-renewal hook script
+      ansible.builtin.copy:
+        src: nft_disable_http.sh
+        dest: /etc/letsencrypt/renewal-hooks/post/
+        mode: '0774'
+
+    - name: Copy Certbot renewal-deploy hook script
+      ansible.builtin.copy:
+        src: cert_deploy.sh
+        dest: /etc/letsencrypt/renewal-hooks/deploy/
+        mode: '0774'
+
+    - name: Create Certbot renewal cron job
+      ansible.builtin.cron:
+        name: "certbot_renewal_script"
+        minute: "35"
+        hour: "0,12"
+        job: "/usr/local/bin/certbot_renew_cert.sh"
+        user: "root"
+        state: present
+
+    - name: Create domain certificate
+      ansible.builtin.shell:
+        cmd: |
+          if [ ! -f "{{ certbot_certificate }}" ]; then
+            certbot certonly --standalone --agree-tos -m "" -d "{{ certbot_domain }}"
+          fi
+        user: "root"
+        state: present

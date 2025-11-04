@@ -15,4 +15,3 @@ alias dkrmi='docker rmi'
 mkcd () {
 	mkdir -p "$@" && cd "$@"
 }
-
