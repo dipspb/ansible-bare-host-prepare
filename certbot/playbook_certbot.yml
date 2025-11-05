@@ -20,7 +20,6 @@
           - python3-venv
           - libaugeas-dev
           - gcc
-          - nginx
         state: present
 
     - name: Install Certbot
